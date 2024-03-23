@@ -1,0 +1,45 @@
+crt0.rel            :   crt0.s \
+                        main.inc
+main.rel            :   main.s main.inc \
+                        bios.inc System.inc
+System.rel          :   System.s System.inc \
+                        main.inc bios.inc vdp.inc
+Math.rel            :   Math.s Math.inc
+Sound.rel           :   Sound.s Sound.inc \
+                        bios.inc System.inc
+App.rel             :   App.s App.inc \
+                        bios.inc vdp.inc System.inc Title.inc Game.inc
+Title.rel           :   Title.s Title.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc
+Game.rel            :   Game.s Game.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc Town.inc Dungeon.inc Player.inc Dice.inc Maze.inc Menu.inc Camp.inc Battle.inc
+Town.rel            :   Town.s Town.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc Game.inc Player.inc Menu.inc Camp.inc
+Dungeon.rel         :   Dungeon.s Dungeon.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc Game.inc Player.inc Enemy.inc Dice.inc Maze.inc Menu.inc Camp.inc Battle.inc
+Player.rel          :   Player.s Player.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc Game.inc
+Enemy.rel           :   Enemy.s Enemy.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc Game.inc
+Dice.rel            :   Dice.s Dice.inc \
+                        bios.inc vdp.inc System.inc Math.inc Sound.inc App.inc Game.inc
+Maze.rel            :   Maze.s Maze.inc \
+                        bios.inc vdp.inc System.inc Sound.inc App.inc Game.inc
+Menu.rel            :   Menu.s Menu.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc Game.inc
+Camp.rel            :   Camp.s Camp.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc Game.inc Player.inc Menu.inc
+Battle.rel          :   Battle.s Battle.inc \
+                        bios.inc vdp.inc System.inc Sound.inc Code.inc App.inc Game.inc Player.inc Enemy.inc Dice.inc Menu.inc
+
+pattern.rel         :   pattern.s
+sprite.rel          :   sprite.s
+logo.rel            :   logo.s
+monster_1.rel       :   monster_1.s
+monster_2.rel       :   monster_2.s
+monster_3.rel       :   monster_3.s
+monster_4.rel       :   monster_4.s
+monster_5.rel       :   monster_5.s
+monster_6.rel       :   monster_6.s
+monster_7.rel       :   monster_7.s
+

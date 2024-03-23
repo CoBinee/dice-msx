@@ -1,0 +1,1454 @@
+; Maze.s : 迷路
+;
+
+
+; モジュール宣言
+;
+    .module Maze
+
+; 参照ファイル
+;
+    .include    "bios.inc"
+    .include    "vdp.inc"
+    .include    "System.inc"
+    .include    "Sound.inc"
+    .include    "App.inc"
+    .include    "Game.inc"
+    .include	"Maze.inc"
+
+; 外部変数宣言
+;
+
+; マクロの定義
+;
+
+
+; CODE 領域
+;
+    .area   _CODE
+
+; 迷路を初期化する
+;
+_MazeInitialize::
+    
+    ; レジスタの保存
+    
+    ; 迷路の初期化
+    xor     a
+    call    _MazeLoad
+
+    ; レジスタの復帰
+    
+    ; 終了
+    ret
+
+; 迷路を読み込む
+;
+_MazeLoad:
+
+    ; レジスタの保存
+
+    ; a < 現在地のブロック
+
+    ; 迷路の初期化
+    ld      hl, #(_maze + 0x0000)
+    ld      de, #(_maze + 0x0001)
+    ld      bc, #(MAZE_SIZE_X * MAZE_SIZE_Y - 0x0001)
+    ld      (hl), #MAZE_PATH
+    ldir
+
+    ; スタート地点の設定
+    call    _MazeLoadHere
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+_MazeLoadHere::
+
+    ; レジスタの保存
+
+    ; a < 現在地のブロック
+
+    ; 迷路の設定
+    add     a, a
+    add     a, a
+    add     a, a
+    ld      e, a
+    ld      d, #0x00
+    ld      hl, #mazeBlockHere
+    add     hl, de
+    ld      de, #(_maze + MAZE_BLOCK_SIZE_Y * MAZE_SIZE_X)
+    call    MazeSetBlock
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+_MazeLoadNext::
+
+    ; レジスタの保存
+
+    ; a < 目的地のブロック
+
+    ; 迷路の設定
+    add     a, a
+    add     a, a
+    add     a, a
+    ld      e, a
+    ld      d, #0x00
+    ld      hl, #mazeBlockNext
+    add     hl, de
+    ld      de, #(_maze + 0 * MAZE_SIZE_X)
+    call    MazeSetBlock
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+; 迷路にブロックを設定する
+;
+MazeSetBlock:
+
+    ; レジスタの保存
+    push    hl
+    push    bc
+    push    de
+
+    ; hl < ブロック
+    ; de < 迷路の位置
+
+    ; 迷路の展開
+    ex      de, hl
+    ld      b, #MAZE_BLOCK_SIZE_Y
+10$:
+    push    bc
+    ld      a, (de)
+    ld      b, #MAZE_BLOCK_SIZE_X
+11$:
+    rla
+    jr      nc, 12$
+    ld      (hl), #MAZE_WALL
+12$:
+    inc     hl
+    djnz    11$
+    inc     de
+    ld      bc, #(MAZE_SIZE_X - MAZE_BLOCK_SIZE_X)
+    add     hl, bc
+    pop     bc
+    djnz    10$
+
+    ; レジスタの復帰
+    pop     de
+    pop     bc
+    pop     hl
+
+    ; 終了
+    ret
+
+; 壁かどうかを判定する
+;
+_MazeIsWall::
+
+    ; レジスタの保存
+    push    hl
+    push    de
+
+    ; de < Y/X 位置
+    ; cf > 1 = 壁
+
+    ; 壁の判定
+    ld      a, e
+    cp      #MAZE_SIZE_X
+    jr      nc, 18$
+    ld      a, d
+    cp      #MAZE_SIZE_Y
+    jr      nc, 18$
+    add     a, a
+    add     a, a
+    add     a, a
+    add     a, a
+    add     a, e
+    ld      e, a
+    ld      d, #0x00
+    ld      hl, #_maze
+    add     hl, de
+    ld      a, (hl)
+    or      a
+    jr      z, 18$
+    scf
+    jr      19$
+18$:
+    or      a
+;   jr      19$
+19$:
+
+    ; レジスタの復帰
+    pop     de
+    pop     hl
+
+    ; 終了
+    ret
+
+; 現在地の位置を取得する
+;
+_MazeGetHerePosition::
+
+    ; レジスタの保存
+
+    ; a  < ブロック
+    ; de > Y/X 位置
+
+    ; 位置の取得
+    ld      de, #(((MAZE_BLOCK_SIZE_Y + MAZE_BLOCK_O_Y) << 8) | MAZE_BLOCK_O_X)
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+; 現在地の向きを取得する
+;
+_MazeGetHereDirection::
+
+    ; レジスタの保存
+    push    hl
+    push    de
+
+    ; a < ブロック
+    ; a > 向き
+
+    ; 向きの取得
+    ld      e, a
+    ld      d, #0x00
+    ld      hl, #mazeHereDirection
+    add     hl, de
+    ld      a, (hl)
+
+    ; レジスタの復帰
+    pop     de
+    pop     hl
+
+    ; 終了
+    ret
+
+; 迷路を表示する
+;
+_MazePrint::
+
+    ; レジスタの保存
+
+    ; de < Y/X 位置
+    ; a  < 向き
+
+    ; 向き別の描画
+    or      a
+    jr      nz, 10$
+    call    MazePrintNorth
+    jr      19$
+10$:
+    dec     a
+    jr      nz, 11$
+    call    MazePrintEast
+    jr      19$
+11$:
+    dec     a
+    jr      nz, 12$
+    call    MazePrintSouth
+    jr      19$
+12$:
+    call    MazePrintWest
+;   jr      19$
+19$:
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+MazePrintNorth:
+
+    ; レジスタの保存
+
+    ; de < Y/X 位置
+
+    ; 壁の描画
+    dec     d
+    dec     d
+    dec     d
+    dec     e
+;   dec     e
+;   dec     e
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l4
+;   call    c, MazePrintWall
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l3
+;   call    c, MazePrintWall
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l2
+;   call    c, MazePrintWall
+;   inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_l1
+    call    c, MazePrintWall
+    inc     e
+    inc     e
+;   inc     e
+;   inc     e
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r4
+;   call    c, MazePrintWall
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r3
+;   call    c, MazePrintWall
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r2
+;   call    c, MazePrintWall
+;   dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_r1
+    call    c, MazePrintWall
+    dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_c
+    call    c, MazePrintWall
+    inc     d
+    dec     e
+;   dec     e
+;   dec     e
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l4
+;   call    c, MazePrintWall
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l3
+;   call    c, MazePrintWall
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l2
+;   call    c, MazePrintWall
+;   inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_l1
+    call    c, MazePrintWall
+    inc     e
+    inc     e
+;   inc     e
+;   inc     e
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r4
+;   call    c, MazePrintWall
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r3
+;   call    c, MazePrintWall
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r2
+;   call    c, MazePrintWall
+;   dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_r1
+    call    c, MazePrintWall
+    dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_c
+    call    c, MazePrintWall
+    inc     d
+    dec     e
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_1_l2
+;   call    c, MazePrintWall
+;   inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_l1
+    call    c, MazePrintWall
+    inc     e
+    inc     e
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_1_r2
+;    call    c, MazePrintWall
+;   dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_r1
+    call    c, MazePrintWall
+    dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_c
+    call    c, MazePrintWall
+    inc     d
+    dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_0_l1
+    call    c, MazePrintWall
+    inc     e
+    inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_0_r1
+    call    c, MazePrintWall
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+MazePrintSouth:
+
+    ; レジスタの保存
+
+    ; de < Y/X 位置
+
+    ; 壁の描画
+    inc     d
+    inc     d
+    inc     d
+    inc     e
+;   inc     e
+;   inc     e
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l4
+;   call    c, MazePrintWall
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l3
+;   call    c, MazePrintWall
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l2
+;   call    c, MazePrintWall
+;   dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_l1
+    call    c, MazePrintWall
+    dec     e
+    dec     e
+;   dec     e
+;   dec     e
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r4
+;   call    c, MazePrintWall
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r3
+;   call    c, MazePrintWall
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r2
+;   call    c, MazePrintWall
+;   inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_r1
+    call    c, MazePrintWall
+    inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_c
+    call    c, MazePrintWall
+    dec     d
+    inc     e
+;   inc     e
+;   inc     e
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l4
+;   call    c, MazePrintWall
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l3
+;   call    c, MazePrintWall
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l2
+;   call    c, MazePrintWall
+;   dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_l1
+    call    c, MazePrintWall
+    dec     e
+    dec     e
+;   dec     e
+;   dec     e
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r4
+;   call    c, MazePrintWall
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r3
+;   call    c, MazePrintWall
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r2
+;   call    c, MazePrintWall
+;   inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_r1
+    call    c, MazePrintWall
+    inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_c
+    call    c, MazePrintWall
+    dec     d
+    inc     e
+;   inc     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_1_l2
+;   call    c, MazePrintWall
+;   dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_l1
+    call    c, MazePrintWall
+    dec     e
+    dec     e
+;   dec     e
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_1_r2
+;   call    c, MazePrintWall
+;   inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_r1
+    call    c, MazePrintWall
+    inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_c
+    call    c, MazePrintWall
+    dec     d
+    inc     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_0_l1
+    call    c, MazePrintWall
+    dec     e
+    dec     e
+    call    _MazeIsWall
+    ld      hl, #mazeWall_0_r1
+    call    c, MazePrintWall
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+MazePrintEast:
+
+    ; レジスタの保存
+
+    ; de < Y/X 位置
+
+    ; 壁の描画
+    inc     e
+    inc     e
+    inc     e
+    dec     d
+;   dec     d
+;   dec     d
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l4
+;   call    c, MazePrintWall
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l3
+;   call    c, MazePrintWall
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l2
+;   call    c, MazePrintWall
+;   inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_l1
+    call    c, MazePrintWall
+    inc     d
+    inc     d
+;   inc     d
+;   inc     d
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r4
+;   call    c, MazePrintWall
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r3
+;   call    c, MazePrintWall
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r2
+;   call    c, MazePrintWall
+;   dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_r1
+    call    c, MazePrintWall
+    dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_c
+    call    c, MazePrintWall
+    dec     e
+    dec     d
+;   dec     d
+;   dec     d
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l4
+;   call    c, MazePrintWall
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l3
+;   call    c, MazePrintWall
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l2
+;   call    c, MazePrintWall
+;   inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_l1
+    call    c, MazePrintWall
+    inc     d
+    inc     d
+;   inc     d
+;   inc     d
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r4
+;   call    c, MazePrintWall
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r3
+;   call    c, MazePrintWall
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r2
+;   call    c, MazePrintWall
+;   dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_r1
+    call    c, MazePrintWall
+    dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_c
+    call    c, MazePrintWall
+    dec     e
+    dec     d
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_1_l2
+;   call    c, MazePrintWall
+;   inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_l1
+    call    c, MazePrintWall
+    inc     d
+    inc     d
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_1_r2
+;   call    c, MazePrintWall
+;   dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_r1
+    call    c, MazePrintWall
+    dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_c
+    call    c, MazePrintWall
+    dec     e
+    dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_0_l1
+    call    c, MazePrintWall
+    inc     d
+    inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_0_r1
+    call    c, MazePrintWall
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+MazePrintWest:
+
+    ; レジスタの保存
+
+    ; de < Y/X 位置
+
+    ; 壁の描画
+    dec     e
+    dec     e
+    dec     e
+    inc     d
+;   inc     d
+;   inc     d
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l4
+;   call    c, MazePrintWall
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l3
+;   call    c, MazePrintWall
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_l2
+;   call    c, MazePrintWall
+;   dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_l1
+    call    c, MazePrintWall
+    dec     d
+    dec     d
+;   dec     d
+;   dec     d
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r4
+;   call    c, MazePrintWall
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r3
+;   call    c, MazePrintWall
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_3_r2
+;   call    c, MazePrintWall
+;   inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_r1
+    call    c, MazePrintWall
+    inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_3_c
+    call    c, MazePrintWall
+    inc     e
+    inc     d
+;   inc     d
+;   inc     d
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l4
+;   call    c, MazePrintWall
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l3
+;   call    c, MazePrintWall
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_l2
+;   call    c, MazePrintWall
+;   dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_l1
+    call    c, MazePrintWall
+    dec     d
+    dec     d
+;   dec     d
+;   dec     d
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r4
+;   call    c, MazePrintWall
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r3
+;   call    c, MazePrintWall
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_2_r2
+;   call    c, MazePrintWall
+;   inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_r1
+    call    c, MazePrintWall
+    inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_2_c
+    call    c, MazePrintWall
+    inc     e
+    inc     d
+;   inc     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_1_l2
+;   call    c, MazePrintWall
+;   dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_l1
+    call    c, MazePrintWall
+    dec     d
+    dec     d
+;   dec     d
+;   call    _MazeIsWall
+;   ld      hl, #mazeWall_1_r2
+;   call    c, MazePrintWall
+;   inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_r1
+    call    c, MazePrintWall
+    inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_1_c
+    call    c, MazePrintWall
+    inc     e
+    inc     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_0_l1
+    call    c, MazePrintWall
+    dec     d
+    dec     d
+    call    _MazeIsWall
+    ld      hl, #mazeWall_0_r1
+    call    c, MazePrintWall
+
+    ; レジスタの復帰
+
+    ; 終了
+    ret
+
+MazePrintWall:
+
+    ; レジスタの保存
+    push    hl
+    push    bc
+    push    de
+
+    ; hl < 壁
+
+    ; 壁の取得
+    ld      e, (hl)
+    inc     hl
+    ld      d, (hl)
+    inc     hl
+    ld      c, (hl)
+    inc     hl
+    ld      b, (hl)
+    inc     hl
+    ex      de, hl
+
+    ; 壁の描画
+10$:
+    push    bc
+    push    hl
+11$:
+    ld      a, (de)
+    ld      (hl), a
+    inc     de
+    inc     hl
+    dec     c
+    jr      nz, 11$
+    pop     hl
+    ld      bc, #0x0020
+    add     hl, bc
+    pop     bc
+    djnz    10$
+
+    ; レジスタの復帰
+    pop     de
+    pop     bc
+    pop     hl
+
+    ; 終了
+    ret
+
+; 定数の定義
+;
+
+; ブロック
+;
+mazeBlockHere:
+
+    ; MAZE_BLOCK_NULL
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    ; MAZE_BLOCK_ROOM_1
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11111110
+    .db     0b11111110
+    .db     0b00000000
+    ; MAZE_BLOCK_ROOM_2
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_DEAD_END
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11111110
+    .db     0b11111110
+    .db     0b11111110
+    .db     0b00000000
+    ; MAZE_BLOCK_PATH
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_ROOM_3
+    .db     0b11101110
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000000
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b11111110
+    .db     0b00000000
+    ; MAZE_BLOCK_JUNCTION
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00001110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_TURN_BACK
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11100000
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_CASTLE_1
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_CASTLE_2
+    .db     0b11101110
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_CASTLE_3
+    .db     0b11101110
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b11111110
+    .db     0b00000000
+
+mazeBlockNext:
+
+    ; MAZE_BLOCK_NULL
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    .db     0b00000000
+    ; MAZE_BLOCK_ROOM_1
+    .db     0b11111110
+    .db     0b11111110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_ROOM_2
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_DEAD_END
+    .db     0b11111110
+    .db     0b11111110
+    .db     0b11111110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_PATH
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_ROOM_3
+    .db     0b11111110
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000000
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_JUNCTION
+    .db     0b11111110
+    .db     0b11111110
+    .db     0b11111110
+    .db     0b00000000
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_TURN_BACK
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11100000
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_CASTLE_1
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11000110
+    .db     0b11101110
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_CASTLE_2
+    .db     0b11101110
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b11101110
+    .db     0b00000000
+    ; MAZE_BLOCK_CASTLE_3
+    .db     0b11111110
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b10000010
+    .db     0b11101110
+    .db     0b00000000
+
+; 現在地
+;
+mazeHereDirection:
+
+    .db     0x00
+    .db     MAZE_DIRECTION_SOUTH
+    .db     MAZE_DIRECTION_NORTH
+    .db     MAZE_DIRECTION_SOUTH
+    .db     MAZE_DIRECTION_NORTH
+    .db     MAZE_DIRECTION_WEST
+    .db     MAZE_DIRECTION_NORTH
+    .db     MAZE_DIRECTION_NORTH
+    .db     MAZE_DIRECTION_NORTH
+    .db     MAZE_DIRECTION_NORTH
+    .db     MAZE_DIRECTION_SOUTH
+
+; 壁
+;
+mazeWall_3_l4:
+
+    .dw     _patternName + 10 * 0x20 + 0
+    .db     2, 4
+    .db     0xc1, 0xc2
+    .db     0x00, 0xc4
+    .db     0x00, 0xc4
+    .db     0xc6, 0xc7
+
+mazeWall_3_l3:
+
+    .dw     _patternName + 10 * 0x20 + 2
+    .db     4, 4
+    .db     0xc0, 0xc1, 0xc1, 0xc2
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc7
+
+mazeWall_3_l2:
+
+    .dw     _patternName + 10 * 0x20 + 6
+    .db     4, 4
+    .db     0xc0, 0xc1, 0xc1, 0xc2
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc7
+
+mazeWall_3_l1:
+
+    .dw     _patternName + 10 * 0x20 + 10
+    .db     4, 4
+    .db     0xc0, 0xc1, 0xc1, 0xc2
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc7
+
+mazeWall_3_c:
+
+    .dw     _patternName + 10 * 0x20 + 14
+    .db     4, 4
+    .db     0xc0, 0xc1, 0xc1, 0xc2
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc7
+
+mazeWall_3_r1:
+
+    .dw     _patternName + 10 * 0x20 + 18
+    .db     4, 4
+    .db     0xc0, 0xc1, 0xc1, 0xc2
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc7
+
+mazeWall_3_r2:
+
+    .dw     _patternName + 10 * 0x20 + 22
+    .db     4, 4
+    .db     0xc0, 0xc1, 0xc1, 0xc2
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc7
+
+mazeWall_3_r3:
+
+    .dw     _patternName + 10 * 0x20 + 26
+    .db     4, 4
+    .db     0xc0, 0xc1, 0xc1, 0xc2
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc7
+
+mazeWall_3_r4:
+
+    .dw     _patternName + 10 * 0x20 + 28
+    .db     2, 4
+    .db     0xc0, 0xc1
+    .db     0xc3, 0x00
+    .db     0xc3, 0x00
+    .db     0xc5, 0xc6
+
+mazeWall_2_l4:
+
+    .dw     _patternName + 9 * 0x20 + 0
+    .db     2, 6
+    .db     0xe4, 0xe5
+    .db     0x00, 0xc4
+    .db     0x00, 0xc4
+    .db     0x00, 0xc4
+    .db     0x00, 0xc4
+    .db     0xe8, 0xe9
+
+mazeWall_2_l3:
+
+    .dw     _patternName + 8 * 0x20 + 0
+    .db     6, 8
+    .db     0xde, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0xda, 0xdb, 0xdc, 0xdd, 0xde
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3
+    .db     0xe3, 0x00, 0x00, 0x00, 0x00, 0x00
+
+mazeWall_2_l2:
+
+    .dw     _patternName + 8 * 0x20 + 0
+    .db     10, 8
+    .db     0xc1, 0xc1, 0xc1, 0xc2, 0xd0, 0xd5, 0xd6, 0x00, 0x00, 0x00 
+    .db     0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xd4, 0xd5, 0xd6
+    .db     0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xd7, 0xd8, 0xd9
+    .db     0xc6, 0xc6, 0xc6, 0xc7, 0xd2, 0xd8, 0xd9, 0x00, 0x00, 0x00
+
+mazeWall_2_l1:
+
+    .dw     _patternName + 8 * 0x20 + 4
+    .db     10, 8
+    .db     0xc0, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc2, 0xc8, 0x00 
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0xc9
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0xcd
+    .db     0xc5, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc7, 0xcc, 0x00
+
+mazeWall_2_c:
+
+    .dw     _patternName + 8 * 0x20 + 12
+    .db     8, 8
+    .db     0xc0, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc2 
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc7
+
+mazeWall_2_r1:
+
+    .dw     _patternName + 8 * 0x20 + 18
+    .db     10, 8
+    .db     0x00, 0xcb, 0xc0, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc2 
+    .db     0xca, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xce, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0xcf, 0xc5, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc7
+
+mazeWall_2_r2:
+
+    .dw     _patternName + 8 * 0x20 + 22
+    .db     10, 8
+    .db     0x00, 0x00, 0x00, 0xd7, 0xd8, 0xd1, 0xc0, 0xc1, 0xc1, 0xc1 
+    .db     0xd7, 0xd8, 0xd9, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00
+    .db     0xd4, 0xd5, 0xd6, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00
+    .db     0x00, 0x00, 0x00, 0xd4, 0xd5, 0xd3, 0xc5, 0xc6, 0xc6, 0xc6
+
+mazeWall_2_r3:
+
+    .dw     _patternName + 8 * 0x20 + 26
+    .db     6, 8
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0xdf
+    .db     0xdf, 0xe0, 0xe1, 0xe2, 0xe3, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xda, 0xdb, 0xdc, 0xdd, 0xde, 0x00
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0xda
+
+mazeWall_2_r4:
+
+    .dw     _patternName + 9 * 0x20 + 30
+    .db     2, 6
+    .db     0xe6, 0xe7
+    .db     0xc3, 0x00
+    .db     0xc3, 0x00
+    .db     0xc3, 0x00
+    .db     0xc3, 0x00
+    .db     0xea, 0xeb
+
+mazeWall_1_l2:
+
+    .dw     _patternName + 6 * 0x20 + 0
+    .db     4, 12
+    .db     0xd6, 0x00, 0x00, 0x00
+    .db     0x00, 0xd4, 0xd5, 0xd6
+    .db     0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0xd7, 0xd8, 0xd9
+    .db     0xd9, 0x00, 0x00, 0x00
+
+mazeWall_1_l1:
+
+    .dw     _patternName + 4 * 0x20 + 0
+    .db     12, 16
+    .db     0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc2, 0xc8, 0x00, 0x00, 0x00 
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0xc9, 0x00, 0x00
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0xc9, 0x00
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc9
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0xcd
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0xcd, 0x00
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4, 0xc3, 0xcd, 0x00, 0x00
+    .db     0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc7, 0xcc, 0x00, 0x00, 0x00
+
+mazeWall_1_c:
+
+    .dw     _patternName + 4 * 0x20 + 8
+    .db     16, 16
+    .db     0xc0, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc2
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0xc5, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc7
+
+mazeWall_1_r1:
+
+    .dw     _patternName + 4 * 0x20 + 20
+    .db     12, 16
+    .db     0x00, 0x00, 0x00, 0xcb, 0xc0, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1, 0xc1
+    .db     0x00, 0x00, 0xca, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0xca, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xca, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xce, 0x00, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0xce, 0x00, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0x00, 0xce, 0xc4, 0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0x00, 0x00, 0xcf, 0xc5, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6, 0xc6
+
+mazeWall_1_r2:
+
+    .dw     _patternName + 6 * 0x20 + 28
+    .db     4, 12
+    .db     0x00, 0x00, 0x00, 0xd7
+    .db     0xd7, 0xd8, 0xd9, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00
+    .db     0xd4, 0xd5, 0xd6, 0x00
+    .db     0x00, 0x00, 0x00, 0xd4
+
+mazeWall_0_l1:
+
+    .dw     _patternName + 0 * 0x20 + 0
+    .db     8, 24
+    .db     0x00, 0x00, 0x00, 0x00, 0xc9, 0x00, 0x00, 0x00 
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0xc9, 0x00, 0x00
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc9, 0x00
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc9
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc4
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0x00
+    .db     0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0x00, 0x00
+    .db     0x00, 0x00, 0x00, 0x00, 0xcd, 0x00, 0x00, 0x00
+
+mazeWall_0_r1:
+
+    .dw     _patternName + 0 * 0x20 + 24
+    .db     8, 24
+    .db     0x00, 0x00, 0x00, 0xca, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0x00, 0xca, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0xca, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xca, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xc3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0xce, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0xce, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0x00, 0xce, 0x00, 0x00, 0x00, 0x00, 0x00
+    .db     0x00, 0x00, 0x00, 0xce, 0x00, 0x00, 0x00, 0x00
+
+
+; DATA 領域
+;
+    .area   _DATA
+
+; 変数の定義
+;
+
+; 迷路
+;
+_maze::
+    
+    .ds     MAZE_SIZE_X * MAZE_SIZE_Y
+
