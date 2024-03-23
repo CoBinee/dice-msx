@@ -1,6 +1,6 @@
 # だいす☆くえすと そろすぺしゃる
 
-[![Witches](http://img.youtube.com/vi/2nwcgLjtebg/0.jpg)](https://www.youtube.com/watch?v=2nwcgLjtebg)
+[![だいす☆くえすと そろすぺしゃる](http://img.youtube.com/vi/2nwcgLjtebg/0.jpg)](https://www.youtube.com/watch?v=2nwcgLjtebg)
 
 ## 説明
 白竜の女王イシャスヤルを倒してください。<br>
